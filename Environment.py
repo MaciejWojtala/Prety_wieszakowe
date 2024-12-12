@@ -1,5 +1,5 @@
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import pygame
 import numpy as np
 from scipy.optimize import fsolve
@@ -21,8 +21,7 @@ class PhysicalEnv(gym.Env):
         self.max_steps = max_steps
         self.EA = self.E * self.A
         self.l_0_EA = self.l_0 / self.EA
-        # Observations are dictionaries with the agent's and the target's location.
-        # Each location is encoded as an element of {0, ..., `size`}^2, i.e. MultiDiscrete([size, size]).
+        self.action_scale = 1e4
         self.observation_space = spaces.Box(low = -np.inf * np.ones(self.size), high = np.inf * np.ones(self.size), shape=(self.size,), dtype=np.float64)
 
         self.action_space = spaces.Dict(
@@ -33,14 +32,10 @@ class PhysicalEnv(gym.Env):
         )
         
     def step(self, action):
-        print("step begin")
         self.n_step = self.n_step + 1
         terminated = (self.n_step == self.max_steps)
         truncated = terminated
        
-        #index = action["index"]
-        #u = action["u"]
-        #K = np.array([0.0, 0.0, 0.0, 0.0, 0.0])
         line = np.array([1.0, 1.0])
         input_ = np.concatenate((self.f, line))
         solution = fsolve(self.step_equations_function, input_, args=action)
@@ -52,7 +47,9 @@ class PhysicalEnv(gym.Env):
         
         observation = self.f
         self.l = a * self.xs + b * np.ones(self.size)
-        reward = np.min(self.f) - np.max(self.f)
+        reward = 0.0
+        if terminated:
+            reward = np.min(self.f) - np.max(self.f)
         info = {'l' : self.l}
 
 
@@ -63,7 +60,7 @@ class PhysicalEnv(gym.Env):
         f = args[:self.size]
         line = args[self.size:]
         index = action["index"]
-        u = action["u"]
+        u = action["u"][0] / self.action_scale
         alpha = line[0]
         beta = line[1]
         result = []
@@ -74,8 +71,7 @@ class PhysicalEnv(gym.Env):
             if i == index:
                 equation = equation - u
             result.append(equation)
-            
-            
+        
         return np.array(result)
         
     def reset_equations_function(self, f):
